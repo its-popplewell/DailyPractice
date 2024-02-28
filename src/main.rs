@@ -1,66 +1,53 @@
 use nannou::prelude::*;
-use rand::prelude::*;
 
-fn rand_between(mini: f32, maxi: f32, rng_num: f32) -> f32 {
-    assert!(mini < maxi); // Ensure the minimum is less than the maximum
-    assert!(rng_num >= 0. && rng_num <= 1.);
-
-    (rng_num * (maxi - mini)) + mini
+struct Model {
+    window_id: WindowId,
+    grid_size: usize,
+    LL: LinkedList
 }
 
-#[derive(Clone, Debug)]
-struct Star {
-    pos: Vec2,
-    depth: f32,
-    previous_depth: f32,
-    delta_depth: f32,
-    move_vec: Vec2
+fn view(app: &App, model: &Model, frame: Frame) {
+    let draw = app.draw();
+    let window = app.window(model.window_id).unwrap();
+    let win = window.rect();
+
+    draw.background().color(BLACK);
+
+    model.LL.get_pos_vec().iter().for_each(|el| {
+        draw.rect()
+            .color(WHITE)
+            .x_y(el.x * model.grid_size as f32, el.y * model.grid_size as f32)
+            .w_h(model.grid_size as f32, model.grid_size as f32);
+
+        println!("{}, {}", el.x, el.y);
+    });
+
+    draw.to_frame(app, &frame).unwrap();
+
 }
 
-impl Star {
-    fn new(pos: Vec2, depth: f32) -> Self {
-        Star {
-            pos,
-            depth,
-            previous_depth: depth,
-            delta_depth: 0.1,
-            move_vec: pos.normalize()
-        }
-    }
+fn event(_app: &App, _model: &mut Model, _event: WindowEvent) {
+    println!("{:?}", _event);
+}
 
-    fn reset(&mut self, pos: Vec2, depth: f32) {
-        self.pos = pos;
-        self.depth = depth;
-        self.previous_depth = depth;
-        self.move_vec = pos.normalize();
-    }
-    
-    // true if in bounds
-    // false if out of bounds
-    fn update(&mut self) -> bool {
-        self.previous_depth = self.depth;
-        self.depth += self.delta_depth;
+fn update(_app: &App, model: &mut Model, _update: Update) {
+    model.LL.update();
+}
 
-        let interp_depth = std::f32::consts::E.pow(self.depth);
-        let draw_pos = self.pos + (self.move_vec * interp_depth);
-        
-        if draw_pos.x > 500. || draw_pos.x < -500. || draw_pos.y > 500. || draw_pos.y < -500. {
-            return false;
-        }
+fn model(app: &App) -> Model {
+    let window_id = app.new_window()
+        .size(1000, 1000)
+        .view(view)
+        .event(event)
+        .title("boop bop")
+        .build().unwrap();
 
-        true
-    }
+    let LL = LinkedList::new();
 
-    fn show(&self) -> (Vec2, Vec2) {
-
-        
-        let interp_depth = std::f32::consts::E.pow(self.depth);
-        let draw_pos = self.pos + (self.move_vec * interp_depth);
-
-        let prev_interp_depth = std::f32::consts::E.pow(self.previous_depth);
-        let prev_draw_pos = self.pos + (self.move_vec * prev_interp_depth);
-
-        (draw_pos, prev_draw_pos)
+    Model {
+        window_id,
+        grid_size: 20,
+        LL,
     }
 }
 
@@ -70,101 +57,114 @@ fn main() {
         .run();
 }
 
-struct Model {
-    window_id: WindowId,
-    stars: Vec<Star>,
-    rng: ThreadRng
+struct LinkedList {
+    head: Box<Node>,
+    tail: Box<Node>,
+    len: usize,
 }
 
-fn model(app: &App) -> Model {
-    println!("BUILDING MODEL");
-
-    let window_id = app
-        .new_window()
-        .size(1000, 1000)
-        .title("sucadic")
-        .view(view)
-        .event(event)
-        .build()
-        .unwrap();
-
-    let mut rng = rand::thread_rng();
-
-    let mut stars = Vec::new();
-    let count = 400;
-
-    // println!("{:?}", pt2(rand_between(-400., 400., rng.gen::<f32>()), rand_between(-400., 400., rng.gen::<f32>())));
-    // stars.push(Star::new(
-    //     pt2(rand_between(-40., 40., rng.gen::<f32>()), rand_between(-40., 40., rng.gen::<f32>())),
-    //     rand_between(0., 1., rng.gen::<f32>()) 
-    // ));
-        
-    for _ in 0..count {
-        println!("GENERATING STAR");
-        let mut pos = pt2(rand_between(-40., 40., rng.gen::<f32>()), rand_between(-40., 40., rng.gen::<f32>()));
-        while pos.x == 0. && pos.y == 0. {
-            pos = pt2(rand_between(-40., 40., rng.gen::<f32>()), rand_between(-40., 40., rng.gen::<f32>()));
+impl LinkedList {
+    fn new() -> Self {
+        let node = Box::new(Node::new(pt2(0., 0.), pt2(1., 0.)));
+        LinkedList {
+            head: node.clone(),
+            tail: node,
+            len: 1
         }
-
-
-        stars.push(Star::new(
-                pos,
-                rand_between(0., 4., rng.gen::<f32>()) 
-        ));
     }
 
-    println!("{:?}", stars.clone());
-
-    Model {
-        window_id,
-        stars,
-        rng
-    }
-}
-
-fn event(_app: &App, _model: &mut Model, event: WindowEvent) {
-    // println!("{:?}", event);
-}
-
-fn update(_app: &App, model: &mut Model, _update: Update) {
-    for star in model.stars.iter_mut() {
-
-        // Only runs when start is out of bounds
-        if !star.update() {
-            let mut pos = pt2(rand_between(-60., 60., model.rng.gen::<f32>()), rand_between(-60., 60., model.rng.gen::<f32>()));
-            while pos.x == 0. && pos.y == 0. {
-                pos = pt2(rand_between(-40., 40., model.rng.gen::<f32>()), rand_between(-40., 40., model.rng.gen::<f32>()));
+    fn get_pos_vec(&self) -> Vec<Vec2> {
+        let mut curr = self.head.clone();
+        let mut outp1 = Vec::new();
+        for _ in 0..self.len {
+            outp1.push(curr.pos);
+            match curr.clone().next {
+                Some(_) => curr = curr.next.unwrap().clone(),
+                None => {}
             }
-            
-            star.reset(
-                pos,
-                rand_between(0., 4., model.rng.gen::<f32>()) 
-            );
+        }
+
+        outp1
+    }
+
+    fn update(&mut self) {
+        let mut is_head = true;
+        let mut curr = self.head.clone();
+
+        for _ in 0..self.len {
+            if is_head {
+                let food = Food {pos: pt2(-300., -300.)};
+                let body = self.get_pos_vec();
+
+                curr.move_from_vel();
+                curr.check_pos(food, body);
+                is_head = false;
+                match curr.clone().next {
+                    Some(_) => curr = curr.next.unwrap().clone(),
+                    None => {}
+                }
+            } else {
+                match curr.clone().next {
+                    Some(_) => {
+                        let prev = curr.clone();
+                        curr = curr.next.unwrap().clone();
+                        curr.move_to(prev.pos);
+                    }
+                    None => {
+
+                    }
+                }
+            }
+        }
+
+        println!("Updating Complete");
+    }
+
+    fn change_velocity(&mut self, new: Vec2) {
+        assert!(new == pt2(-1., 0.) || new == pt2(0., -1.) || new == pt2(1., 0.) || new == pt2(0., 1.));
+        self.head.vel = Some(new)
+    }
+
+}
+
+#[derive(Clone)]
+struct Node {
+    pos: Vec2,
+    vel: Option<Vec2>,
+    next: Option<Box<Node>>,
+}
+
+impl Node {
+    fn new(pos: Vec2, vel: Vec2) -> Self {
+        Node {
+            pos,
+            vel: Some(vel),
+            next: None,
+        }
+    }
+
+    fn move_from_vel(&mut self) {
+        self.pos += self.vel.unwrap().normalize();
+        println!("moved");
+    }
+
+    fn move_to(&mut self, pos: Vec2) {
+        self.pos = pos;
+    }
+
+    fn check_pos(&self, food: Food, body: Vec<Vec2>) {
+        if self.pos == food.pos {
+            println!("GROW");
+        } else if self.pos.x > 950. || self.pos.x < 0. || self.pos.y > 950. || self.pos.y < 0. {
+            println!("SCREEN ISSUE, END GAME");
+        } else {
+            if body.iter().filter(|&&el| el == self.pos).collect::<Vec<_>>().len() != 0 {
+                println!("HIT YOURSELF, END GAME");
+            }
         }
     }
 }
 
-fn view(app: &App, model: &Model, frame: Frame) {
-    let draw = app.draw();
-    let window = app.window(model.window_id).expect("COULDN'T LOAD WINDOW FROM ID");
-    let win = window.rect();
-
-    draw.background().color(BLACK);
-
-    for star in model.stars.clone() {
-        let(startp, endp) = star.show();
-        
-        // draw.ellipse()
-        //     .xy(startp)
-        //     .radius(5.0)
-        //     .color(BLACK);
-
-        draw.line()
-            .start(startp)
-            .end(endp)
-            .weight(1.0)
-            .color(WHITE);
-    }
-
-    draw.to_frame(app, &frame).expect("ISSUE DRAWING TO FRAME");
+struct Food {
+    pos: Vec2
 }
